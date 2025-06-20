@@ -1,6 +1,8 @@
 import argparse
 import logging
 import pandas as pd
+import requests
+import time
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -18,6 +20,8 @@ WAIT_SECONDS    = 10   # Délai max pour attendre le tableau
 MAX_EMPTY_PAGES = 3    # Arrêt après X pages consécutives vides
 MAX_ERRORS      = 3    # Arrêt après X erreurs consécutives
 LOG_FILE        = "scrap_html.log"
+PDF_DIR         = Path("decisions")
+RETRY_DOWNLOADS = 3
 
 # Colonnes du DataFrame
 PAGE_COL = "Page"
@@ -29,6 +33,7 @@ COLUMNS = [
     "Type of action",# Type d’action
     "Parties",       # Parties impliquées
     "UPC Document",  # Lien PDF du document
+    "PDF File",      # Chemin local du PDF (optionnel)
     PAGE_COL          # Index de page lors du scraping
 ]
 
@@ -85,7 +90,13 @@ def parse_args() -> argparse.Namespace:
         action="store_false",
         help="Disable JavaScript in the headless browser (default)",
     )
-    parser.set_defaults(enable_js=False)
+    parser.add_argument(
+        "--download-pdfs",
+        dest="download_pdfs",
+        action="store_true",
+        help="Download linked PDF documents to the decisions folder",
+    )
+    parser.set_defaults(enable_js=False, download_pdfs=False)
     return parser.parse_args()
 
 # --- FONCTIONS UTILES ---
@@ -161,9 +172,39 @@ def parse_table(driver, page_index: int):
             "Type of action": action,
             "Parties": parties,
             "UPC Document": upc_doc,
+            "PDF File": "",
             PAGE_COL: page_index
         })
     return records
+
+
+def sanitize(name: str) -> str:
+    """Sanitize a string to be used in a filename."""
+    keep = "-_"  # allowed punctuation
+    name = name.replace("/", "-")
+    return "".join(c for c in name if c.isalnum() or c in keep or c == " ").strip().replace(" ", "_")
+
+
+def download_pdf(url: str, path: Path, retries: int = RETRY_DOWNLOADS) -> bool:
+    """Download a PDF with retry logic."""
+    if path.exists():
+        logger.info(f"PDF already exists: {path}")
+        return True
+    for attempt in range(1, retries + 1):
+        try:
+            resp = requests.get(url, timeout=30)
+            if resp.status_code == 200:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with open(path, "wb") as f:
+                    f.write(resp.content)
+                return True
+            else:
+                raise ValueError(f"status {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"Failed to download {url} (attempt {attempt}/{retries}): {e}")
+            time.sleep(2)
+    logger.error(f"Giving up on {url}")
+    return False
 
 
 def load_existing(output_file: Path) -> pd.DataFrame:
@@ -172,6 +213,8 @@ def load_existing(output_file: Path) -> pd.DataFrame:
         df = pd.read_excel(output_file, dtype=str)
         if PAGE_COL not in df.columns:
             df[PAGE_COL] = pd.NA
+        if "PDF File" not in df.columns:
+            df["PDF File"] = pd.NA
         logger.info(f"Loaded existing file with {len(df)} records.")
         return df
     logger.info("No existing file found, starting fresh.")
@@ -230,6 +273,15 @@ def main() -> None:
         logger.info(f"Parsing page {page}...")
 
         records = parse_table(driver, page)
+        if args.download_pdfs:
+            for rec in records:
+                url_pdf = rec.get("UPC Document")
+                if not url_pdf:
+                    continue
+                filename = f"{sanitize(rec['Date'])}_{sanitize(rec['Parties'])}_{sanitize(rec['Registry'])}_{sanitize(rec['Court'])}.pdf"
+                path = PDF_DIR / filename
+                if download_pdf(url_pdf, path):
+                    rec["PDF File"] = str(path)
         if not records:
             empty_count += 1
             logger.info(
