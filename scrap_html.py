@@ -22,6 +22,7 @@ MAX_ERRORS      = 3    # Arrêt après X erreurs consécutives
 LOG_FILE        = "scrap_html.log"
 PDF_DIR         = Path("decisions")
 RETRY_DOWNLOADS = 3
+PDF_WORKERS    = 4  # Threads for parallel PDF downloads
 
 # Colonnes du DataFrame
 PAGE_COL = "Page"
@@ -95,6 +96,12 @@ def parse_args() -> argparse.Namespace:
         dest="download_pdfs",
         action="store_true",
         help="Download linked PDF documents to the decisions folder",
+    )
+    parser.add_argument(
+        "--pdf-workers",
+        type=int,
+        default=PDF_WORKERS,
+        help="Number of parallel threads for PDF downloads",
     )
     parser.set_defaults(enable_js=False, download_pdfs=False)
     return parser.parse_args()
@@ -207,6 +214,29 @@ def download_pdf(url: str, path: Path, retries: int = RETRY_DOWNLOADS) -> bool:
     return False
 
 
+def download_pdfs_parallel(records: list[dict], workers: int = PDF_WORKERS) -> None:
+    """Download PDFs for the given records using a thread pool."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    tasks = []
+    with ThreadPoolExecutor(max_workers=workers) as exe:
+        for rec in records:
+            url_pdf = rec.get("UPC Document")
+            if not url_pdf:
+                continue
+            filename = (
+                f"{sanitize(rec['Date'])}_{sanitize(rec['Parties'])}_"
+                f"{sanitize(rec['Registry'])}_{sanitize(rec['Court'])}.pdf"
+            )
+            path = PDF_DIR / filename
+            fut = exe.submit(download_pdf, url_pdf, path)
+            tasks.append((fut, rec, path))
+
+        for fut, rec, path in tasks:
+            if fut.result():
+                rec["PDF File"] = str(path)
+
+
 def load_existing(output_file: Path) -> pd.DataFrame:
     """Charge l'Excel existant ou crée un DataFrame vide."""
     if output_file.exists():
@@ -274,14 +304,7 @@ def main() -> None:
 
         records = parse_table(driver, page)
         if args.download_pdfs:
-            for rec in records:
-                url_pdf = rec.get("UPC Document")
-                if not url_pdf:
-                    continue
-                filename = f"{sanitize(rec['Date'])}_{sanitize(rec['Parties'])}_{sanitize(rec['Registry'])}_{sanitize(rec['Court'])}.pdf"
-                path = PDF_DIR / filename
-                if download_pdf(url_pdf, path):
-                    rec["PDF File"] = str(path)
+            download_pdfs_parallel(records, args.pdf_workers)
         if not records:
             empty_count += 1
             logger.info(

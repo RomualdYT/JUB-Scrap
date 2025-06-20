@@ -56,7 +56,9 @@ allow JavaScript, or `--disable-js` to explicitly disable it.
 
 Use `--download-pdfs` to automatically fetch linked PDF documents. They will be
 saved in the `decisions` folder with a filename composed of the date, parties,
-registry number and court.
+registry number and court. PDF downloads are performed in parallel using
+multiple threads. Adjust the number of concurrent downloads with
+`--pdf-workers` (default is 4).
 
 The results will be stored in `decisions_html.xlsx` in the project root.
 =======
