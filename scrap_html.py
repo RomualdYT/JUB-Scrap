@@ -73,18 +73,34 @@ def parse_args() -> argparse.Namespace:
         default=WAIT_SECONDS,
         help="Maximum seconds to wait for table loading",
     )
+    parser.add_argument(
+        "--enable-js",
+        dest="enable_js",
+        action="store_true",
+        help="Enable JavaScript in the headless browser",
+    )
+    parser.add_argument(
+        "--disable-js",
+        dest="enable_js",
+        action="store_false",
+        help="Disable JavaScript in the headless browser (default)",
+    )
+    parser.set_defaults(enable_js=False)
     return parser.parse_args()
 
 # --- FONCTIONS UTILES ---
 
-def setup_driver():
-    """Configure Chrome headless, désactive images et JS pour accélérer."""  
+def setup_driver(enable_js: bool = False):
+    """Configure Chrome headless and optionally enable JavaScript."""
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-gpu")
-    prefs = {"profile.managed_default_content_settings.images": 2,
-             "profile.managed_default_content_settings.javascript": 2}
+    js_setting = 1 if enable_js else 2
+    prefs = {
+        "profile.managed_default_content_settings.images": 2,
+        "profile.managed_default_content_settings.javascript": js_setting,
+    }
     options.add_experimental_option("prefs", prefs)
     return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
@@ -173,7 +189,7 @@ def main() -> None:
     args = parse_args()
     logger.info("Script démarré.")
     df_old = load_existing(args.output_file)
-    driver = setup_driver()
+    driver = setup_driver(args.enable_js)
     empty_count, error_count = 0, 0
     if PAGE_COL in df_old.columns and not df_old[PAGE_COL].dropna().empty:
         page = int(df_old[PAGE_COL].dropna().astype(int).max()) + 1
