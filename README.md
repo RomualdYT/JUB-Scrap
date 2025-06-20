@@ -54,6 +54,10 @@ python scrap_html.py
 By default JavaScript is disabled for faster scraping. Use `--enable-js` to
 allow JavaScript, or `--disable-js` to explicitly disable it.
 
+Use `--download-pdfs` to automatically fetch linked PDF documents. They will be
+saved in the `decisions` folder with a filename composed of the date, parties,
+registry number and court.
+
 The results will be stored in `decisions_html.xlsx` in the project root.
 =======
 During execution the script will crawl each page until no more data is found. Parsed records are added to `decisions_html.xlsx` and diagnostic messages are stored in **`scrap_html.log`**.
