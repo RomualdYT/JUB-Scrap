@@ -1,3 +1,4 @@
+import argparse
 import logging
 import pandas as pd
 from pathlib import Path
@@ -9,7 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION PAR DÉFAUT ---
 BASE_URL        = "https://www.unified-patent-court.org/en/decisions-and-orders"
 OUTPUT_FILE     = Path("decisions_html.xlsx")
 WAIT_SECONDS    = 10   # Délai max pour attendre le tableau
@@ -35,6 +36,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- ARGUMENTS ---
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Scrape UPC decisions table")
+    parser.add_argument(
+        "--base-url",
+        default=BASE_URL,
+        help="Base URL of the decisions table",
+    )
+    parser.add_argument(
+        "--output-file",
+        type=Path,
+        default=OUTPUT_FILE,
+        help="Excel file to write results",
+    )
+    parser.add_argument(
+        "--max-empty-pages",
+        type=int,
+        default=MAX_EMPTY_PAGES,
+        help="Maximum number of consecutive empty pages before stopping",
+    )
+    parser.add_argument(
+        "--wait-seconds",
+        type=int,
+        default=WAIT_SECONDS,
+        help="Maximum seconds to wait for table loading",
+    )
+    return parser.parse_args()
+
 # --- FONCTIONS UTILES ---
 
 def setup_driver():
@@ -49,9 +79,9 @@ def setup_driver():
     return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
 
-def wait_for_table(driver):
+def wait_for_table(driver, wait_seconds: int) -> None:
     """Attend que le tableau soit chargé dans le DOM."""
-    WebDriverWait(driver, WAIT_SECONDS).until(
+    WebDriverWait(driver, wait_seconds).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, "table.views-table tbody tr"))
     )
 
@@ -109,34 +139,35 @@ def parse_table(driver):
     return records
 
 
-def load_existing():
-    """Charge l'Excel existant ou crée un DataFrame vide """
-    if OUTPUT_FILE.exists():
-        df = pd.read_excel(OUTPUT_FILE, dtype=str)
+def load_existing(output_file: Path) -> pd.DataFrame:
+    """Charge l'Excel existant ou crée un DataFrame vide."""
+    if output_file.exists():
+        df = pd.read_excel(output_file, dtype=str)
         logger.info(f"Loaded existing file with {len(df)} records.")
         return df
     logger.info("No existing file found, starting fresh.")
     return pd.DataFrame(columns=COLUMNS)
 
 
-def save(df):
+def save(df: pd.DataFrame, output_file: Path) -> None:
     """Sauvegarde le DataFrame dans l'Excel."""
-    df.to_excel(OUTPUT_FILE, index=False)
-    logger.info(f"Saved {len(df)} total records to {OUTPUT_FILE}.")
+    df.to_excel(output_file, index=False)
+    logger.info(f"Saved {len(df)} total records to {output_file}.")
 
 # --- SCRIPT PRINCIPAL ---
 
-def main():
+def main() -> None:
+    args = parse_args()
     logger.info("Script démarré.")
-    df_old = load_existing()
+    df_old = load_existing(args.output_file)
     driver = setup_driver()
     empty_count, all_records, page = 0, [], 0
 
     while True:
-        url = BASE_URL + (f"?page={page}" if page > 0 else "")
+        url = args.base_url + (f"?page={page}" if page > 0 else "")
         driver.get(url)
         try:
-            wait_for_table(driver)
+            wait_for_table(driver, args.wait_seconds)
         except Exception as e:
             logger.warning(f"Table not found on page {page}: {e}")
         logger.info(f"Parsing page {page}...")
@@ -144,8 +175,10 @@ def main():
         records = parse_table(driver)
         if not records:
             empty_count += 1
-            logger.info(f"Page {page} empty ({empty_count}/{MAX_EMPTY_PAGES}).")
-            if empty_count >= MAX_EMPTY_PAGES:
+            logger.info(
+                f"Page {page} empty ({empty_count}/{args.max_empty_pages})."
+            )
+            if empty_count >= args.max_empty_pages:
                 logger.info("Maximum empty pages reached. Stopping pagination.")
                 break
         else:
@@ -161,7 +194,7 @@ def main():
     df_all = pd.concat([df_old, df_new], ignore_index=True)
     df_all.drop_duplicates(subset=["Registry", "UPC Document"], keep="last", inplace=True)
 
-    save(df_all)
+    save(df_all, args.output_file)
     logger.info("Script terminé.")
 
 if __name__ == "__main__":
