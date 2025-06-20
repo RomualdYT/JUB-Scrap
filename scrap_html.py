@@ -7,6 +7,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import WebDriverException, TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime
 
@@ -15,6 +16,7 @@ BASE_URL        = "https://www.unified-patent-court.org/en/decisions-and-orders"
 OUTPUT_FILE     = Path("decisions_html.xlsx")
 WAIT_SECONDS    = 10   # Délai max pour attendre le tableau
 MAX_EMPTY_PAGES = 3    # Arrêt après X pages consécutives vides
+MAX_ERRORS      = 3    # Arrêt après X erreurs consécutives
 LOG_FILE        = "scrap_html.log"
 
 # Colonnes du DataFrame
@@ -56,6 +58,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=MAX_EMPTY_PAGES,
         help="Maximum number of consecutive empty pages before stopping",
+    )
+    parser.add_argument(
+        "--max-errors",
+        type=int,
+        default=MAX_ERRORS,
+        help="Maximum number of consecutive errors before aborting",
     )
     parser.add_argument(
         "--wait-seconds",
@@ -161,15 +169,39 @@ def main() -> None:
     logger.info("Script démarré.")
     df_old = load_existing(args.output_file)
     driver = setup_driver()
-    empty_count, all_records, page = 0, [], 0
+    empty_count, error_count = 0, 0
+    all_records, page = [], 0
+    persistent_error = False
 
     while True:
         url = args.base_url + (f"?page={page}" if page > 0 else "")
-        driver.get(url)
         try:
+            driver.get(url)
             wait_for_table(driver, args.wait_seconds)
+        except (WebDriverException, TimeoutException) as e:
+            error_count += 1
+            logger.error(
+                f"Error loading page {page}: {e} ({error_count}/{args.max_errors})"
+            )
+            if error_count >= args.max_errors:
+                logger.error("Maximum consecutive errors reached. Aborting.")
+                persistent_error = True
+                break
+            page += 1
+            continue
         except Exception as e:
-            logger.warning(f"Table not found on page {page}: {e}")
+            error_count += 1
+            logger.error(
+                f"Unexpected error on page {page}: {e} ({error_count}/{args.max_errors})"
+            )
+            if error_count >= args.max_errors:
+                logger.error("Maximum consecutive errors reached. Aborting.")
+                persistent_error = True
+                break
+            page += 1
+            continue
+        else:
+            error_count = 0
         logger.info(f"Parsing page {page}...")
 
         records = parse_table(driver)
@@ -188,6 +220,8 @@ def main() -> None:
         page += 1
 
     driver.quit()
+    if persistent_error:
+        logger.error("Script stopped due to repeated errors.")
 
     df_new = pd.DataFrame(all_records)
     logger.info(f"Parsed {len(df_new)} new records.")
