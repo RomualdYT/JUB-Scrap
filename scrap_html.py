@@ -20,6 +20,7 @@ MAX_ERRORS      = 3    # Arrêt après X erreurs consécutives
 LOG_FILE        = "scrap_html.log"
 
 # Colonnes du DataFrame
+PAGE_COL = "Page"
 COLUMNS = [
     "Date",          # Date de la décision au format JJ/MM/AAAA
     "Registry",      # Numéro de dossier(s), plusieurs lignes séparées par '\n'
@@ -27,7 +28,8 @@ COLUMNS = [
     "Court",         # Instance judiciaire
     "Type of action",# Type d’action
     "Parties",       # Parties impliquées
-    "UPC Document"   # Lien PDF du document
+    "UPC Document",  # Lien PDF du document
+    PAGE_COL          # Index de page lors du scraping
 ]
 
 # --- LOGGER SETUP ---
@@ -94,7 +96,7 @@ def wait_for_table(driver, wait_seconds: int) -> None:
     )
 
 
-def parse_table(driver):
+def parse_table(driver, page_index: int):
     """
     Parcourt chaque ligne du tableau et extrait les champs :
       Date, Registry, Full Details, Court, Type of action, Parties, UPC Document.
@@ -142,7 +144,8 @@ def parse_table(driver):
             "Court": court,
             "Type of action": action,
             "Parties": parties,
-            "UPC Document": upc_doc
+            "UPC Document": upc_doc,
+            PAGE_COL: page_index
         })
     return records
 
@@ -151,6 +154,8 @@ def load_existing(output_file: Path) -> pd.DataFrame:
     """Charge l'Excel existant ou crée un DataFrame vide."""
     if output_file.exists():
         df = pd.read_excel(output_file, dtype=str)
+        if PAGE_COL not in df.columns:
+            df[PAGE_COL] = pd.NA
         logger.info(f"Loaded existing file with {len(df)} records.")
         return df
     logger.info("No existing file found, starting fresh.")
@@ -170,7 +175,11 @@ def main() -> None:
     df_old = load_existing(args.output_file)
     driver = setup_driver()
     empty_count, error_count = 0, 0
-    all_records, page = [], 0
+    if PAGE_COL in df_old.columns and not df_old[PAGE_COL].dropna().empty:
+        page = int(df_old[PAGE_COL].dropna().astype(int).max()) + 1
+    else:
+        page = 0
+    all_records = []
     persistent_error = False
 
     while True:
@@ -204,7 +213,7 @@ def main() -> None:
             error_count = 0
         logger.info(f"Parsing page {page}...")
 
-        records = parse_table(driver)
+        records = parse_table(driver, page)
         if not records:
             empty_count += 1
             logger.info(
@@ -223,10 +232,11 @@ def main() -> None:
     if persistent_error:
         logger.error("Script stopped due to repeated errors.")
 
-    df_new = pd.DataFrame(all_records)
+    df_new = pd.DataFrame(all_records, columns=COLUMNS)
     logger.info(f"Parsed {len(df_new)} new records.")
     df_all = pd.concat([df_old, df_new], ignore_index=True)
-    df_all.drop_duplicates(subset=["Registry", "UPC Document"], keep="last", inplace=True)
+    df_all.drop_duplicates(subset=["Registry", "UPC Document"], keep="first", inplace=True)
+    df_all.sort_values(by=PAGE_COL, inplace=True, ignore_index=True)
 
     save(df_all, args.output_file)
     logger.info("Script terminé.")
