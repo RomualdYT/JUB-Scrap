@@ -1,5 +1,15 @@
 # JUB-Scrap
 
+This project scrapes decisions from the Unified Patent Court website and saves them to an Excel file.
+
+## Setup
+
+1. Ensure you have Python installed (version 3.8 or later).
+2. Install the required dependencies:
+
+```bash
+pip install -r requirements.txt
+=======
 This repository contains a small script, `scrap_html.py`, used to collect the public decisions available on the Unified Patent Court website.
 
 ## Purpose of `scrap_html.py`
@@ -32,11 +42,16 @@ pip install -U selenium webdriver-manager pandas openpyxl
 
 ## Running the script
 
+Execute `scrap_html.py` to start scraping:
+=======
 Once the dependencies are installed, execute the script directly with Python:
+
 
 ```bash
 python scrap_html.py
 ```
 
+The results will be stored in `decisions_html.xlsx` in the project root.
+=======
 During execution the script will crawl each page until no more data is found. Parsed records are added to `decisions_html.xlsx` and diagnostic messages are stored in **`scrap_html.log`**.
 
