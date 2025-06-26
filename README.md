@@ -31,7 +31,7 @@ The script requires the following Python packages:
 - `pandas`
 - `openpyxl` (used by pandas to create the Excel file)
 
-## Setup
+## Virtual environment
 
 Create and activate a virtual environment, then install the dependencies:
 
