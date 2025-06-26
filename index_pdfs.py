@@ -65,7 +65,9 @@ def do_index(args: argparse.Namespace) -> None:
         raise SystemExit(f"Excel file not found: {excel_path}")
 
     ix = create_or_open_index(Path(args.index_dir))
-    df = pd.read_excel(excel_path, dtype=str)
+    # Read the Excel data as strings and replace NaN/NA values by empty
+    # strings so Whoosh does not receive invalid values during indexing.
+    df = pd.read_excel(excel_path, dtype=str).fillna("")
 
     with ix.writer(limitmb=256) as writer:
         for _, row in df.iterrows():
@@ -78,7 +80,9 @@ def do_index(args: argparse.Namespace) -> None:
             text = extract_text(pdf_path)
             writer.update_document(
                 path=str(pdf_path),
-                date=parse_date(row.get("Date", "") or "1970-01-01"),
+                # parse_date returns ``None`` for invalid values which keeps the
+                # field optional in the index.
+                date=parse_date(row.get("Date", "")),
                 registry=row.get("Registry", ""),
                 parties=row.get("Parties", ""),
                 court=row.get("Court", ""),
