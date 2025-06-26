@@ -64,3 +64,25 @@ The results will be stored in `decisions_html.xlsx` in the project root.
 =======
 During execution the script will crawl each page until no more data is found. Parsed records are added to `decisions_html.xlsx` and diagnostic messages are stored in **`scrap_html.log`**.
 
+
+## PDF Indexing and Search
+
+After downloading the PDF files with `scrap_html.py` you can build a
+local search index. The index stores the text extracted from each PDF
+along with the metadata found in `decisions_html.xlsx`.
+
+Create the index:
+
+```bash
+python index_pdfs.py index --excel decisions_html.xlsx
+```
+
+This will create a directory named `indexdir` with the searchable data.
+
+Search the index using a keyword and optional date range:
+
+```bash
+python index_pdfs.py search --query "injunction" --start 01/01/2023 --end 31/12/2023
+```
+
+The command prints matching entries and their metadata as JSON.
