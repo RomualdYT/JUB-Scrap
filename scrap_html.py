@@ -23,6 +23,13 @@ LOG_FILE        = "scrap_html.log"
 PDF_DIR         = Path("decisions")
 RETRY_DOWNLOADS = 3
 PDF_WORKERS    = 4  # Threads for parallel PDF downloads
+HEADERS        = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+}
 
 # Colonnes du DataFrame
 PAGE_COL = "Page"
@@ -199,7 +206,7 @@ def download_pdf(url: str, path: Path, retries: int = RETRY_DOWNLOADS) -> bool:
         return True
     for attempt in range(1, retries + 1):
         try:
-            resp = requests.get(url, timeout=30)
+            resp = requests.get(url, timeout=30, headers=HEADERS)
             if resp.status_code == 200:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with open(path, "wb") as f:
