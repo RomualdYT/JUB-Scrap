@@ -5,3 +5,5 @@ openpyxl
 requests
 pdfminer.six
 whoosh
+
+Flask
