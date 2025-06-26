@@ -70,11 +70,14 @@ def do_index(args: argparse.Namespace) -> None:
     with ix.writer(limitmb=256) as writer:
         for _, row in df.iterrows():
             pdf_file = row.get("PDF File")
-            if not pdf_file or not Path(pdf_file).is_file():
+            if pd.isna(pdf_file) or not pdf_file:
                 continue
-            text = extract_text(pdf_file)
+            pdf_path = Path(str(pdf_file))
+            if not pdf_path.is_file():
+                continue
+            text = extract_text(pdf_path)
             writer.update_document(
-                path=str(pdf_file),
+                path=str(pdf_path),
                 date=parse_date(row.get("Date", "") or "1970-01-01"),
                 registry=row.get("Registry", ""),
                 parties=row.get("Parties", ""),
