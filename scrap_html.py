@@ -12,6 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import WebDriverException, TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime
+from urllib.parse import urljoin
 
 # --- CONFIGURATION PAR DÉFAUT ---
 BASE_URL        = "https://www.unified-patent-court.org/en/decisions-and-orders"
@@ -23,6 +24,13 @@ LOG_FILE        = "scrap_html.log"
 PDF_DIR         = Path("decisions")
 RETRY_DOWNLOADS = 3
 PDF_WORKERS    = 4  # Threads for parallel PDF downloads
+HEADERS        = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+}
 
 # Colonnes du DataFrame
 PAGE_COL = "Page"
@@ -135,11 +143,18 @@ def parse_table(driver, page_index: int):
     Parcourt chaque ligne du tableau et extrait les champs :
       Date, Registry, Full Details, Court, Type of action, Parties, UPC Document.
     """
+    header_cells = driver.find_elements(By.CSS_SELECTOR, "table.views-table thead th")
+    headers = [h.text.strip() for h in header_cells]
+    try:
+        upc_idx = headers.index("UPC Document")
+    except ValueError:
+        upc_idx = len(headers) - 1
+
     records = []
     rows = driver.find_elements(By.CSS_SELECTOR, "table.views-table tbody tr")
     for tr in rows:
         cells = tr.find_elements(By.TAG_NAME, "td")
-        if len(cells) < 6:
+        if len(cells) <= upc_idx:
             continue  # ligne inattendue
 
         # 1. Date
@@ -165,11 +180,14 @@ def parse_table(driver, page_index: int):
         action  = cells[3].text.strip()
         parties = cells[4].text.strip()
 
-        # 5. UPC Document URL (dernier <td>)
-        try:
-            upc_doc = cells[5].find_element(By.TAG_NAME, "a").get_attribute("href")
-        except Exception:
+        # 5. UPC Document URL
+        anchors = cells[upc_idx].find_elements(By.TAG_NAME, "a")
+        if anchors:
+            upc_doc = anchors[0].get_attribute("href") or ""
+        else:
             upc_doc = ""
+        if upc_doc and not upc_doc.startswith("http"):
+            upc_doc = urljoin(BASE_URL, upc_doc)
 
         records.append({
             "Date": date,
@@ -199,7 +217,7 @@ def download_pdf(url: str, path: Path, retries: int = RETRY_DOWNLOADS) -> bool:
         return True
     for attempt in range(1, retries + 1):
         try:
-            resp = requests.get(url, timeout=30)
+            resp = requests.get(url, timeout=30, headers=HEADERS)
             if resp.status_code == 200:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with open(path, "wb") as f:

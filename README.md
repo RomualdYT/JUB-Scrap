@@ -9,7 +9,8 @@ This project scrapes decisions from the Unified Patent Court website and saves t
 
 ```bash
 pip install -r requirements.txt
-=======
+```
+
 This repository contains a small script, `scrap_html.py`, used to collect the public decisions available on the Unified Patent Court website.
 
 ## Purpose of `scrap_html.py`
@@ -30,7 +31,7 @@ The script requires the following Python packages:
 - `pandas`
 - `openpyxl` (used by pandas to create the Excel file)
 
-## Setup
+## Virtual environment
 
 Create and activate a virtual environment, then install the dependencies:
 
@@ -42,8 +43,6 @@ pip install -U selenium webdriver-manager pandas openpyxl
 
 ## Running the script
 
-Execute `scrap_html.py` to start scraping:
-=======
 Once the dependencies are installed, execute the script directly with Python:
 
 
@@ -61,7 +60,7 @@ multiple threads. Adjust the number of concurrent downloads with
 `--pdf-workers` (default is 4).
 
 The results will be stored in `decisions_html.xlsx` in the project root.
-=======
+
 During execution the script will crawl each page until no more data is found. Parsed records are added to `decisions_html.xlsx` and diagnostic messages are stored in **`scrap_html.log`**.
 
 
