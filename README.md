@@ -85,3 +85,13 @@ python index_pdfs.py search --query "injunction" --start 01/01/2023 --end 31/12/
 ```
 
 The command prints matching entries and their metadata as JSON.
+
+## Web search interface
+
+Once the index is created you can start a small web server to search the decisions through your browser:
+
+```bash
+python web_search.py --index-dir indexdir
+```
+
+Open `http://127.0.0.1:5000/` in your browser and enter keywords to navigate the indexed decisions.
